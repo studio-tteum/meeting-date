@@ -106,19 +106,37 @@ const fmtTime = t => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
    기본값은 '선택'이다 — 필수로 지정하는 순간 그 사람에게 비용이 발생하므로,
    주최자가 의식적으로 올려야 한다. (지훈은 이미 지정된 상태로 시작한다)
 
-   busy/picks는 여기선 시간 단위로 적는다('1-15' = 1번째 요일의 15시).
+   busy는 시간 단위로 적는다('1-15' = 1번째 요일의 15시) + 무슨 일정인지 제목을 함께 단다.
+   picks도 같은 표기지만 제목이 없는 순수 문자열이다 — 기피는 이유를 안 남긴다.
    격자가 30분 단위라 아래 normalizeFixtures()가 한 번 돌면서 각 시간을
    반시간 2칸으로 펼친다 — 시나리오 데이터를 사람이 시간 단위로 읽고 쓰기 위해서다. */
 const PEOPLE = [
-  { name: '서연', role: 'required', host: true, busy: ['1-15', '1-16'], picks: ['0-9', '4-17'] },
-  { name: '지훈', role: 'required', busyDays: [2, 3], picks: [] }, // 수·목 외근
-  { name: '민수', role: 'optional', busy: ['0-9', '0-10'], picks: ['0-13', '1-13', '4-13', '0-9'] },
-  { name: '하늘', role: 'optional', busy: ['4-16', '4-17'], picks: ['1-13', '4-13', '1-9'] },
-  { name: '예은', role: 'optional', busy: ['0-14'], picks: [] },
-  { name: '태윤', role: 'optional', busy: [], picks: [] }
+  { name: '서연', role: 'required', host: true, team: '기획팀',
+    busy: [{ h: '1-15', title: '외부 미팅' }, { h: '1-16', title: '외부 미팅' }],
+    picks: ['0-9', '4-17'] },
+  { name: '지훈', role: 'required', team: '개발팀', busyDays: [2, 3], busyDayTitle: '외근',
+    busy: [{ h: '1-15', title: '팀장 면담' }], // 서연의 화 15시 '외부 미팅'과 겹치는 시간
+    picks: [] },
+  { name: '민수', role: 'optional', team: '디자인팀',
+    busy: [{ h: '0-9', title: '주간 보고' }, { h: '0-10', title: '주간 보고' }],
+    picks: ['0-13', '1-13', '4-13', '0-9'] },
+  { name: '하늘', role: 'optional', team: '마케팅팀',
+    busy: [{ h: '4-16', title: '거래처 미팅' }, { h: '4-17', title: '거래처 미팅' }],
+    picks: ['1-13', '4-13', '1-9'] },
+  { name: '예은', role: 'optional', team: '개발팀', busy: [{ h: '0-14', title: '면접' }], picks: [] },
+  { name: '태윤', role: 'optional', team: '디자인팀', busy: [], picks: [] }
 ];
 
-const ROSTER = ['준호', '다은', '시우', '예린']; // 추가할 수 있는 동료
+/* 추가할 수 있는 동료 — 카테고리(팀)로 분류해 모달에서 필터링한다. */
+const ROSTER = [
+  { name: '준호', team: '개발팀' },
+  { name: '다은', team: '디자인팀' },
+  { name: '시우', team: '마케팅팀' },
+  { name: '예린', team: '기획팀' }
+];
+const TEAMS = ['전체', '기획팀', '디자인팀', '개발팀', '마케팅팀'];
+let rosterTeam = '전체';
+let REMOVED = []; // ×로 뺀 사람 — 원래 데이터(불가능 시간·역할·팀)를 그대로 들고 있다가 다시 추가하면 복원한다
 
 /* '나'(지훈)는 화면 2에서 실제로 칠하는 사람이다. 지훈을 삭제하면 다음 남은
    필수 참여자에게 이 역할을 넘긴다 — 서연은 항상 필수라 받는 사람이 없어 끊기는 일은 없다. */
@@ -128,14 +146,22 @@ function ensureMe() {
   me = required()[0];
 }
 
-/* 시간 단위 fixture 항목 하나('1-15')를 반시간 두 칸으로 펼친다. */
+/* 시간 단위 fixture 항목 하나('1-15')를 반시간 두 칸으로 펼친다. picks는 제목이 없는 문자열. */
 function expandHour(entry) {
   const [d, h] = entry.split('-').map(Number);
   return [key(d, h * 60), key(d, h * 60 + 30)];
 }
+/* busy는 { h, title } 객체라 제목을 같이 들고 반시간 두 칸으로 펼친다. */
+function expandBusyHour(entry) {
+  const [d, h] = entry.h.split('-').map(Number);
+  return [
+    { key: key(d, h * 60), title: entry.title },
+    { key: key(d, h * 60 + 30), title: entry.title }
+  ];
+}
 function normalizeFixtures() {
   PEOPLE.forEach(p => {
-    if (p.busy) p.busy = p.busy.flatMap(expandHour);
+    if (p.busy) p.busy = p.busy.flatMap(expandBusyHour);
     if (p.picks) p.picks = p.picks.flatMap(expandHour);
   });
 }
@@ -145,9 +171,23 @@ const optional = () => PEOPLE.filter(p => p.role === 'optional');
 
 /* 캘린더가 아는 '불가능'. 사람이 입력하지 않는다. */
 function busySlots(p) {
-  const s = new Set(p.busy || []);
+  const s = new Set((p.busy || []).map(b => b.key));
   (p.busyDays || []).forEach(d => SLOTS.forEach(t => s.add(key(d, t))));
   return s;
+}
+
+/* 그 칸이 무슨 일정인지. 격자에 라벨을 달 때만 쓴다. */
+function busyTitle(p, slotKey) {
+  const found = (p.busy || []).find(b => b.key === slotKey);
+  let title;
+  if (found) {
+    title = found.title;
+  } else {
+    const day = Number(slotKey.split('-')[0]);
+    title = (p.busyDays || []).includes(day) ? (p.busyDayTitle || '다른 일정') : '다른 일정';
+  }
+  // 전체/필수 참여자 보기(합산 대상)는 이미 "이름 · 제목" 형태라 p.name이 없다 — 그때만 건너뛴다.
+  return p.name ? `${p.name} · ${title}` : title;
 }
 
 /* 필수 참여자 중 한 명이라도 안 되면 그 시간은 죽는다 */
@@ -233,7 +273,7 @@ function avatar(p) {
    컬럼 수(=영업일 수)가 기간에 따라 달라지므로 매번 grid-template-columns를 다시 정한다.
    행은 30분 눈금 18개. 정시(:00) 행만 라벨을 보여주고 반시(:30) 행은 비워
    18칸이 붐비지 않게 한다. */
-function buildGrid(el, prefix) {
+function buildGrid(el, prefix, person) {
   el.innerHTML = '';
   el.style.gridTemplateColumns = `56px repeat(${DAYS.length}, 1fr)`;
   el.append(div('corner'));
@@ -243,7 +283,7 @@ function buildGrid(el, prefix) {
     el.append(head);
   });
 
-  const myBusy = prefix === 'in' ? busySlots(me) : null;
+  const shownBusy = prefix === 'in' ? busySlots(person || me) : null;
   SLOTS.forEach(t => {
     const onHour = t % 60 === 0;
     const timeCell = div('time', onHour ? fmtTime(t) : '');
@@ -255,30 +295,11 @@ function buildGrid(el, prefix) {
       cell.dataset.slot = key(d, t);
       cell.classList.toggle('on-hour', onHour);
       if (isLunch(t)) cell.classList.add('lunch');
-      else if (prefix === 'in' && myBusy.has(key(d, t))) cell.classList.add('busy');
-      el.append(cell);
-    });
-  });
-}
-
-/* 화면 1: 한 사람의 캘린더.
-   ⚠️ 여기에는 '불가능'만 나온다. 기피(연두)는 절대 보이지 않는다.
-   불가능은 사실이라 이름을 달아도 비용이 없고, 기피는 선호라 이름을 달면 안 된다. */
-function buildMini(el, p) {
-  const busy = busySlots(p);
-  el.innerHTML = '';
-  el.style.gridTemplateColumns = `26px repeat(${DAYS.length}, 1fr)`;
-  el.append(div('m-corner'));
-  DAYS.forEach(d => el.append(div('m-day', d)));
-
-  SLOTS.forEach(t => {
-    const onHour = t % 60 === 0;
-    el.append(div('m-time', onHour ? fmtTime(t) : ''));
-    DAYS.forEach((_, d) => {
-      const cell = div('m-cell');
-      cell.classList.toggle('on-hour', onHour);
-      if (isLunch(t)) cell.classList.add('lunch');
-      else if (busy.has(key(d, t))) cell.classList.add('busy');
+      else if (prefix === 'in' && shownBusy.has(key(d, t))) {
+        cell.classList.add('busy');
+        // 연속된 칸마다 반복하지 않고, 그 일정이 시작하는 칸에만 라벨을 단다
+        if (!shownBusy.has(key(d, t - SLOT_MIN))) cell.textContent = busyTitle(person || me, key(d, t));
+      }
       el.append(cell);
     });
   });
@@ -298,10 +319,10 @@ const paintable = el =>
 
 /* ── 화면 1: 참여자 ── */
 
-/* 주최자의 '필수'는 토글이 아니라 사실이다. 버튼이 아닌 라벨로 렌더한다.
-   주최자는 필수를 겸하므로 칩 하나에 '주최자'로 합치고, 한 단계 더 진하게 칠한다. */
+/* 주최자의 '필수참여'는 토글이 아니라 사실이다. 버튼이 아닌 라벨로 렌더해 클릭을 막는다.
+   '주최자'라는 사실 자체는 이름 옆 별도 배지로 뗀다. */
 const roleControl = p => p.host
-  ? `<span class="role required fixed host" title="주최자는 항상 필수 참여자입니다">주최자</span>`
+  ? `<span class="role required fixed" title="주최자는 항상 필수 참여자입니다">필수참여</span>`
   : `<button type="button" class="role ${p.role}" aria-pressed="${p.role === 'required'}"
        aria-label="${p.name} 필수 참여자">${p.role === 'required' ? '필수참여' : '선택참여'}</button>`;
 
@@ -311,33 +332,91 @@ function renderPeople() {
     <li class="person${p.host ? ' host' : ''}${p.role === 'required' ? ' required' : ''}" data-i="${i}">
       <div class="prow">
         ${avatar(p)}
-        <span class="pname">${p.name}</span>
-        <button type="button" class="peek sched" aria-expanded="false">일정 보기</button>
+        <span class="pname-group">
+          <span class="pname">${p.name}</span>
+          ${p.team ? `<span class="team-tag">${p.team}</span>` : ''}
+          ${p.host ? `<span class="name-sep" aria-hidden="true">|</span><span class="host-tag">주최자</span>` : ''}
+        </span>
         ${roleControl(p)}
         ${!p.host ? `<button type="button" class="rm" aria-label="${p.name} 제외">×</button>` : `<span class="rm-spacer" aria-hidden="true"></span>`}
       </div>
-      <div class="mini" hidden></div>
     </li>`).join('');
+  renderCombinedSchedule();
 }
+
+/* 개별로 펼쳐보지 않아도 되도록, '인원 추가하기' 아래 프로필을 한 줄로 두고
+   고른 사람의 일정을 화면 2와 같은 격자(buildGrid)로 그대로 보여준다.
+   ⚠️ 여기도 '불가능'만 나온다 — 화면 2 격자와 같은 원칙. */
+let csSelected = null;
+
+/* 개개인이 아니라 여럿을 합쳐 보고 싶을 때 쓴다. 같은 칸에 여러 명이 겹치면
+   "이름 · 제목"을 나열해 누구 일정인지 알 수 있게 한다. */
+function groupBusyEntries(people) {
+  const map = new Map();
+  const add = (k, label) => map.set(k, [...(map.get(k) || []), label]);
+  people.forEach(p => {
+    (p.busy || []).forEach(b => add(b.key, `${p.name} · ${b.title}`));
+    (p.busyDays || []).forEach(d => SLOTS.forEach(t =>
+      add(key(d, t), `${p.name} · ${p.busyDayTitle || '다른 일정'}`)));
+  });
+  return [...map.entries()].map(([k, labels]) => ({ key: k, title: labels.join(', ') }));
+}
+
+function renderCombinedAvatars() {
+  const groupBtn = (mode, label, icon, boundary) => `
+    <button type="button" class="cs-avatar-btn cs-group${boundary ? ' cs-group-end' : ''}${csSelected === mode ? ' on' : ''}"
+            data-mode="${mode}" aria-pressed="${csSelected === mode}">
+      <svg class="av" viewBox="0 0 32 32" aria-hidden="true">
+        <rect width="32" height="32" rx="10" fill="#eef0f2"/>
+        ${icon}
+      </svg>
+      <span>${label}</span>
+    </button>`;
+  const allBtn = groupBtn('ALL', '전체 참여자',
+    `<circle cx="12" cy="13" r="4" fill="#6b7684"/><circle cx="20" cy="13" r="4" fill="#a4acb6"/>
+     <rect x="8" y="20" width="16" height="4" rx="2" fill="#8b95a1"/>`);
+  const reqBtn = groupBtn('REQUIRED', '필수 참여자',
+    `<circle cx="16" cy="12" r="5" fill="#6b7684"/><rect x="7" y="20" width="18" height="5" rx="2.5" fill="#6b7684"/>`,
+    true);
+  const peopleBtns = PEOPLE.map((p, i) => `
+    <button type="button" class="cs-avatar-btn${p === csSelected ? ' on' : ''}"
+            data-i="${i}" aria-pressed="${p === csSelected}">
+      <span class="cs-av-wrap">
+        ${avatar(p)}
+        ${p.role === 'required' ? '<span class="cs-req-dot" title="필수 참여자" aria-hidden="true"></span>' : ''}
+      </span>
+      <span>${p.name}</span>
+    </button>`).join('');
+  document.getElementById('cs-avatars').innerHTML = allBtn + reqBtn + peopleBtns;
+}
+
+function renderCombinedSchedule() {
+  if (csSelected !== 'ALL' && csSelected !== 'REQUIRED' && !PEOPLE.includes(csSelected)) csSelected = PEOPLE[0];
+  renderCombinedAvatars();
+  const person =
+    csSelected === 'ALL' ? { busy: groupBusyEntries(PEOPLE) } :
+    csSelected === 'REQUIRED' ? { busy: groupBusyEntries(required()) } :
+    csSelected;
+  buildGrid(document.getElementById('grid-combined'), 'in', person);
+}
+
+document.getElementById('cs-avatars').addEventListener('click', e => {
+  const btn = e.target.closest('.cs-avatar-btn');
+  if (!btn) return;
+  csSelected = btn.dataset.mode || PEOPLE[btn.dataset.i];
+  renderCombinedSchedule();
+});
 
 document.getElementById('people').addEventListener('click', e => {
   const li = e.target.closest('.person');
-  if (!li || e.target.closest('.mini')) return;   // 캘린더 안을 눌러도 역할은 안 바뀐다
+  if (!li) return;
   const p = PEOPLE[li.dataset.i];
 
   if (e.target.classList.contains('rm')) {
-    PEOPLE.splice(li.dataset.i, 1);
+    REMOVED.push(...PEOPLE.splice(li.dataset.i, 1));
     ensureMe();
     renderPeople();
     return document.getElementById('add-btn').focus();
-  }
-  if (e.target.classList.contains('sched')) {
-    const mini = li.querySelector('.mini');
-    if (mini.hidden) buildMini(mini, p);
-    mini.hidden = !mini.hidden;
-    e.target.textContent = mini.hidden ? '일정 보기' : '접기';
-    e.target.setAttribute('aria-expanded', String(!mini.hidden));
-    return;
   }
   if (p.host) return; // 주최자는 항상 필수
   p.role = p.role === 'required' ? 'optional' : 'required';
@@ -346,12 +425,6 @@ document.getElementById('people').addEventListener('click', e => {
   /* renderPeople()이 목록을 통째로 다시 그려서 포커스가 사라진다.
      키보드로 토글한 사람은 원래 있던 자리로 돌려보낸다. */
   document.querySelector(`.person[data-i="${li.dataset.i}"] button.role`)?.focus();
-
-  /* 주최자를 뺀 모두가 선택이 되는 순간에만 알린다 — 평소엔 조용히 두고
-     실제로 회의가 위태로워질 때만 말한다. */
-  if (required().every(r => r.host)) {
-    alert('필수 참여자가 오지 못하면 회의가 성립하지 않습니다. 최소 한 명은 필수로 지정해주세요.');
-  }
 });
 
 /* ── 회의 설정: 동료 추가 (모달) ──
@@ -368,14 +441,25 @@ function previewAvatar(name) {
   </svg>`;
 }
 
+function renderRosterTabs() {
+  document.getElementById('roster-tabs').innerHTML = TEAMS.map(t => `
+    <button type="button" class="roster-tab${t === rosterTeam ? ' on' : ''}" data-team="${t}">${t}</button>
+  `).join('');
+}
+
 function renderRosterList() {
-  const rest = ROSTER.filter(n => !PEOPLE.some(p => p.name === n));
+  renderRosterTabs();
+  const candidates = [
+    ...ROSTER.filter(r => !PEOPLE.some(p => p.name === r.name)),
+    ...REMOVED.map(p => ({ name: p.name, team: p.team }))
+  ];
+  const rest = rosterTeam === '전체' ? candidates : candidates.filter(c => c.team === rosterTeam);
   document.getElementById('roster-list').innerHTML = rest.length
-    ? rest.map(n => `
+    ? rest.map(c => `
       <li class="roster-row">
-        ${previewAvatar(n)}
-        <span class="roster-name">${n}</span>
-        <button type="button" class="roster-add" data-name="${n}" aria-label="${n} 추가">+</button>
+        ${previewAvatar(c.name)}
+        <span class="roster-name">${c.name}</span>
+        <button type="button" class="roster-add" data-name="${c.name}" aria-label="${c.name} 추가">+</button>
       </li>`).join('')
     : `<li class="roster-empty">추가할 수 있는 동료가 없습니다.</li>`;
 }
@@ -391,15 +475,28 @@ function closeRosterModal() {
 
 document.getElementById('add-btn').addEventListener('click', openRosterModal);
 document.getElementById('roster-modal-close').addEventListener('click', closeRosterModal);
+document.getElementById('roster-tabs').addEventListener('click', e => {
+  const btn = e.target.closest('.roster-tab');
+  if (!btn) return;
+  rosterTeam = btn.dataset.team;
+  renderRosterList();
+});
 document.getElementById('roster-modal').addEventListener('click', e => {
   if (e.target.id === 'roster-modal') closeRosterModal(); // 바깥(오버레이) 클릭 시 닫기
 });
 document.getElementById('roster-list').addEventListener('click', e => {
   const btn = e.target.closest('.roster-add');
   if (!btn) return;
-  PEOPLE.push({ name: btn.dataset.name, role: 'optional', picks: [], added: true });
+  const name = btn.dataset.name;
+  const removedIdx = REMOVED.findIndex(p => p.name === name);
+  if (removedIdx !== -1) {
+    PEOPLE.push(REMOVED.splice(removedIdx, 1)[0]); // 원래 불가능 시간·역할·팀 그대로 복원
+  } else {
+    const team = ROSTER.find(r => r.name === name)?.team;
+    PEOPLE.push({ name, role: 'optional', team, picks: [], added: true });
+  }
   renderPeople();
-  closeRosterModal();
+  renderRosterList(); // 닫지 않고 남은 후보만 다시 그려 연달아 추가할 수 있게 한다
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !document.getElementById('roster-modal').hidden) closeRosterModal();
@@ -506,6 +603,7 @@ function onRangeChange() {
   rebuildDays();
   syncMeta();
   syncDueDate();
+  renderCombinedSchedule();
 }
 document.getElementById('start-date').addEventListener('change', onRangeChange);
 document.getElementById('end-date').addEventListener('change', onRangeChange);
@@ -525,6 +623,7 @@ function applyDateMode() {
   rebuildDays();
   syncMeta();
   syncDueDate();
+  renderCombinedSchedule();
 }
 document.getElementById('mode-fixed').addEventListener('change', applyDateMode);
 document.getElementById('mode-range').addEventListener('change', applyDateMode);
