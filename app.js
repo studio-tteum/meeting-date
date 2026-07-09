@@ -117,10 +117,10 @@ const PEOPLE = [
   { name: '지훈', role: 'required', team: '개발팀', busyDays: [2, 3], busyDayTitle: '외근',
     busy: [{ h: '1-15', title: '팀장 면담' }], // 서연의 화 15시 '외부 미팅'과 겹치는 시간
     picks: [] },
-  { name: '민수', role: 'optional', team: '디자인팀',
+  { name: '민수', role: 'required', team: '디자인팀',
     busy: [{ h: '0-9', title: '주간 보고' }, { h: '0-10', title: '주간 보고' }],
     picks: ['0-13', '1-13', '4-13', '0-9'] },
-  { name: '하늘', role: 'optional', team: '마케팅팀',
+  { name: '하늘', role: 'required', team: '마케팅팀',
     busy: [{ h: '4-16', title: '거래처 미팅' }, { h: '4-17', title: '거래처 미팅' }],
     picks: ['1-13', '4-13', '1-9'] },
   { name: '예은', role: 'optional', team: '개발팀', busy: [{ h: '0-14', title: '면접' }], picks: [] },
@@ -347,7 +347,7 @@ function renderPeople() {
 /* 개별로 펼쳐보지 않아도 되도록, '인원 추가하기' 아래 프로필을 한 줄로 두고
    고른 사람의 일정을 화면 2와 같은 격자(buildGrid)로 그대로 보여준다.
    ⚠️ 여기도 '불가능'만 나온다 — 화면 2 격자와 같은 원칙. */
-let csSelected = null;
+let csSelected = 'REQUIRED';
 
 /* 개개인이 아니라 여럿을 합쳐 보고 싶을 때 쓴다. 같은 칸에 여러 명이 겹치면
    "이름 · 제목"을 나열해 누구 일정인지 알 수 있게 한다. */
@@ -372,11 +372,11 @@ function renderCombinedAvatars() {
       </svg>
       <span>${label}</span>
     </button>`;
+  const reqBtn = groupBtn('REQUIRED', '필수 참여자',
+    `<circle cx="16" cy="12" r="5" fill="#6b7684"/><rect x="7" y="20" width="18" height="5" rx="2.5" fill="#6b7684"/>`);
   const allBtn = groupBtn('ALL', '전체 참여자',
     `<circle cx="12" cy="13" r="4" fill="#6b7684"/><circle cx="20" cy="13" r="4" fill="#a4acb6"/>
-     <rect x="8" y="20" width="16" height="4" rx="2" fill="#8b95a1"/>`);
-  const reqBtn = groupBtn('REQUIRED', '필수 참여자',
-    `<circle cx="16" cy="12" r="5" fill="#6b7684"/><rect x="7" y="20" width="18" height="5" rx="2.5" fill="#6b7684"/>`,
+     <rect x="8" y="20" width="16" height="4" rx="2" fill="#8b95a1"/>`,
     true);
   const peopleBtns = PEOPLE.map((p, i) => `
     <button type="button" class="cs-avatar-btn${p === csSelected ? ' on' : ''}"
@@ -387,11 +387,11 @@ function renderCombinedAvatars() {
       </span>
       <span>${p.name}</span>
     </button>`).join('');
-  document.getElementById('cs-avatars').innerHTML = allBtn + reqBtn + peopleBtns;
+  document.getElementById('cs-avatars').innerHTML = reqBtn + allBtn + peopleBtns;
 }
 
 function renderCombinedSchedule() {
-  if (csSelected !== 'ALL' && csSelected !== 'REQUIRED' && !PEOPLE.includes(csSelected)) csSelected = PEOPLE[0];
+  if (csSelected !== 'ALL' && csSelected !== 'REQUIRED' && !PEOPLE.includes(csSelected)) csSelected = 'REQUIRED';
   renderCombinedAvatars();
   const person =
     csSelected === 'ALL' ? { busy: groupBusyEntries(PEOPLE) } :
@@ -458,7 +458,10 @@ function renderRosterList() {
     ? rest.map(c => `
       <li class="roster-row">
         ${previewAvatar(c.name)}
-        <span class="roster-name">${c.name}</span>
+        <span class="roster-name-group">
+          <span class="roster-name">${c.name}</span>
+          <span class="team-tag">${c.team}</span>
+        </span>
         <button type="button" class="roster-add" data-name="${c.name}" aria-label="${c.name} 추가">+</button>
       </li>`).join('')
     : `<li class="roster-empty">추가할 수 있는 동료가 없습니다.</li>`;

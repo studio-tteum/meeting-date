@@ -264,7 +264,8 @@ select.pick {
   border-bottom: 1px solid var(--line);
 }
 .roster-row:last-child { border-bottom: 0; }
-.roster-name { flex: 1; font-size: 14px; font-weight: 500; color: var(--ink); }
+.roster-name-group { flex: 1; display: flex; align-items: baseline; gap: 8px; }
+.roster-name { font-size: 14px; font-weight: 500; color: var(--ink); }
 .roster-add {
   width: 28px; height: 28px;
   border: 1px solid var(--line);
