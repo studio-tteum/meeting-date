@@ -11,7 +11,7 @@
   --lunch: #ffffff;
   --busy: #fdecec;
   --busy-line: #f4cfcf;
-  --error: #f04452;           /* 토스(Slash) red500 — 폼 오류 테두리 전용. 격자의 빨강(캘린더 불가능)과 역할 구분 */
+  --error: #f04452;           /* 폼 오류 테두리 전용 빨강 — 격자의 빨강(캘린더 불가능)과 역할 구분 */
 
   --z-sticky: 100;
 

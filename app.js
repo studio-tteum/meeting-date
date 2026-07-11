@@ -99,7 +99,7 @@ const isLunch = t => t >= LUNCH_START && t < LUNCH_END;
 const key = (d, t) => `${d}-${t}`;
 const fmtTime = t => `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 
-/* 브리프: 같은 회사 동료 6명. 꼭 참여해야 하는 사람과 선택 참여자가 있다.
+/* 시나리오: 한 팀에서 일하는 동료 여섯 명. 꼭 참여해야 하는 사람과 선택 참여자가 있다.
    기본값은 '선택'이다 — 필수로 지정하는 순간 그 사람에게 비용이 발생하므로,
    주최자가 의식적으로 올려야 한다. (지훈은 이미 지정된 상태로 시작한다)
 
@@ -186,7 +186,7 @@ function weeklyIndexes(d) {
 }
 
 /* busyDays는 '매주 그 요일'이다 — 격자가 몇 주든 같은 요일마다 되풀이된다(지훈의 정기 외근).
-   브리프의 "특정 요일에 외근이 많아요"가 주 단위 패턴이라서다. */
+   요일 단위 외근은 한 주가 아니라 매주 반복되는 패턴이라서다. */
 const busyDayIndexes = p => (p.busyDays || []).flatMap(weeklyIndexes);
 
 /* 캘린더가 아는 '불가능'. 사람이 입력하지 않는다. */
